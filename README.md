@@ -11,7 +11,24 @@ pip3 install scikit-learn numpy lda
 ```bash
 python3 ar_topic.py
 ```
-## TODO: implement the isBlacklist function to filter the sensor events
+
+In the bottom of the code, choose to run either of the task function.
+
+```python
+task_original()
+```
+This is the original Prof. Yan's task: train-test data (75-25 split based on event total numbers) and trained the topic model, and mutual information matrix using the complete stream data.
+
+```python
+task_baseline()
+```
+This is the modified task: train-test data (75-25 split based on date) and trained the topic model, and mutual information matrix using only those 75% stream data. It doesn't filter the testing data.
+
+
+```pythont
+task_testing_blacklist()
+```
+This is the modified task with blacklist: train-test data (75-25 split based on date) and trained the topic model, and mutual information matrix using only those 75% stream data. It should filter the testing data. [TODO: implement the isBlacklist function to filter the sensor events]
 
 
 # Activity Prediction
