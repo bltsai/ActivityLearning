@@ -1,5 +1,5 @@
 # Activity Recognition
-To run, you need to have and extract [data,activites,sensors package](https://drive.google.com/open?id=1hhvRKfI7zmJ0bRJvHhpITK-vTzIwQp3S)
+Before you run, you need to have and extract [data,activites,sensors package](https://drive.google.com/open?id=1hhvRKfI7zmJ0bRJvHhpITK-vTzIwQp3S)
 
 and install packages through pip
 
@@ -7,14 +7,15 @@ and install packages through pip
 pip3 install scikit-learn numpy lda
 ```
 
+
 ```bash
 python3 ar_topic.py
 ```
-
+## TODO: implement the isBlacklist function to filter the sensor events
 
 
 # Activity Prediction
-To run, you need to have [streaming_full.txt](https://drive.google.com/open?id=1EAmA0LjoyEGuJJ_mUbCF_FZR5Et8JAKU)
+Before you run, you need to have [streaming_full.txt](https://drive.google.com/open?id=1EAmA0LjoyEGuJJ_mUbCF_FZR5Et8JAKU)
 
 and install packages through pip
 
