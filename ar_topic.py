@@ -9,7 +9,9 @@ from sklearn.datasets import load_svmlight_file
 
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import confusion_matrix
+from sklearn.metrics import mutual_info_score
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.decomposition import TruncatedSVD
 
 DAYSTAMP_START = "daystart"
 TIMESTAMP_START = "timestart"
@@ -71,7 +73,6 @@ def processing(i_fname, act_t, sensor_t, o_info, mutual_info, mutual_count):
 
             # output activity window, lda feature, mutual information if Other activiy or a known activity ends
             if handle_end:
-
                 act_info = act_dict[now_act_id][SENSORS]
                 act_info[sensor_id] = act_info.get(sensor_id, 0) + 1
 
@@ -102,10 +103,14 @@ def processing(i_fname, act_t, sensor_t, o_info, mutual_info, mutual_count):
                         ofd = o_info["lda"]["ofd"]
                         func(ofd, act_t, sensor_t, now_act_id, starttime, endtime, act_info)
 
+                    if "pcainput" in o_info:
+                        func = o_info["pcainput"]["func"]
+                        ofd = o_info["pcainput"]["ofd"]
+                        func(ofd, now_act_id, sensor_t, act_dict[now_act_id][SENSORS])
+
                     if now_act_id != OTHER_ID and "mutual" in o_info:
                         func = o_info["mutual"]["func"]
                         func(mutual_info, mutual_count, act_info)
-
 
                     # print(now_act_id, act_t[now_act_id], act_dict)
                     # print()
@@ -136,6 +141,7 @@ def processing(i_fname, act_t, sensor_t, o_info, mutual_info, mutual_count):
                                 max_time = tmp_time
                                 now_act_id = tmp_id
                         # print("found it is id %s" % act_t[now_act_id])
+
 
             # if it is handling the end of a known activity, continue to get next line
             if (len(l) > 4 and  "end" in l[4]):
@@ -170,6 +176,8 @@ def processing(i_fname, act_t, sensor_t, o_info, mutual_info, mutual_count):
                     print(act_dict)
                     raise e
 
+
+
 def func_window(ofd, act_t, now_act_id, time_start, time_end, timespan, act_info, sensor_id, involved_sensor_count, event_count):
     # now_act_id = act_t[now_act_id]
     output_line = [str(now_act_id)]
@@ -186,6 +194,61 @@ def func_window(ofd, act_t, now_act_id, time_start, time_end, timespan, act_info
     output_line = "\t".join(output_line) + "\n"
 
     ofd.write(output_line)
+
+def func_pca_input(ofd, now_act_id, sensor_t, sensors):
+    window_sensor_array = []
+    for i in range(0, len(sensor_t)):
+        window_sensor_array.append(sensors.get(i, 0))
+
+    window_sensor_array.append(now_act_id)
+    ofd.write(str(window_sensor_array)[1:-1] + "\n")
+
+def entropy(labels):
+    """ Computes entropy of 0-1 vector. """
+    n_labels = len(labels)
+
+    if n_labels <= 1:
+        return 0
+
+    counts = np.bincount(labels)
+    probs = counts[np.nonzero(counts)] / n_labels
+    n_classes = len(probs)
+
+    if n_classes <= 1:
+        return 0
+    return - np.sum(probs * np.log(probs)) / np.log(n_classes)
+
+def sensor_selection(ifd, sensor_number, target_number):
+    sensor_matrics = []
+    activity_array = []
+    mutual_info = []
+    entropy_info = []
+    target_sensor_index = []
+    for l in ifd:
+        l = l.strip().split(',')
+        sensor_array = np.asfarray(l[:sensor_number])
+        activity_array.append(float(l[sensor_number]))
+        sensor_matrics.append(sensor_array)
+    # svd = TruncatedSVD(n_components=30, n_iter=7, random_state=42)
+    # svd.fit(sensor_matrics, activity_array)
+    # print(svd.explained_variance_ratio_)
+    # print(svd.singular_values_)
+
+    for i in range(sensor_number):
+        entropy_info.append((entropy(np.array(np.array(sensor_matrics)[:,i]).astype(int)), i))
+        mutual_info.append((mutual_info_score(np.array(sensor_matrics)[:,i], activity_array), i))
+
+    print(entropy_info)
+
+    # select target number of sensor that maximize the sum of mutual_info and
+    # minimize the lose of sum of entropy_info from total sensor_number
+    mutual_info.sort(key=lambda tup: tup[0], reverse=True)
+    print(mutual_info)
+
+    return mutual_info[:target_number]
+
+
+
 
 def func_ldafeature(ofd, act_t, sensor_t, now_act_id, starttime, endtime, act_info):
     sensor_dict = act_info[SENSORS]
@@ -509,6 +572,7 @@ def task_original():
     lda_fname = "lda.txt"
     mutual_fname = "mumtrix.txt"
     featurestream_fname = "featurestream.txt"
+    pca_input_fname = "pcainput.txt"
 
     print("Read activity types...", end="", flush=True)
     act_t = getListFromLines(act_t_fname)
@@ -519,17 +583,23 @@ def task_original():
     print("Done")
 
     print("Process streaming label, activity window, LDA feature, and mutual info...", end="", flush=True)
-    with open(streaming_fname, "w") as ofd1, open(window_fname, "w") as ofd2, open(lda_fname, "w") as ofd3, open(mutual_fname, "w") as ofd4:
+    with open(streaming_fname, "w") as ofd1, open(window_fname, "w") as ofd2, open(lda_fname, "w") as ofd3, open(mutual_fname, "w") as ofd4, open(pca_input_fname, "w") as ofd5:
         o_info = {}
         o_info["streaming"] = {"ofd":ofd1}
         o_info["window"] = {"ofd":ofd2, "func":func_window}
         o_info["lda"] = {"ofd":ofd3, "func":func_ldafeature}
         o_info["mutual"] = {"func": func_mutual}
+        o_info["pcainput"] = {"ofd":ofd5, "func":func_pca_input}
         mutual_info = np.zeros((len(sensor_t), len(sensor_t)))
         mutual_count = [0]
         processing(data_fname, act_t, sensor_t, o_info, mutual_info, mutual_count)
         mutual_output(mutual_info, mutual_count, ofd4)
+
     print("Done")
+
+    print("Sensor Selection on the pcainput")
+    with open(pca_input_fname, "r") as ifd:
+        sensor_selection(ifd, len(sensor_t), 30)
 
     print("Calculate window size...", end="", flush=True)
     window_size, window_num = getWindowSize(window_fname, act_t, sensor_t)
@@ -604,11 +674,15 @@ def task_baseline():
 
     # Split the streaming based on the timestamp above
     with open(streaming_fname, "r") as ifd, open("stream_training.txt", "w") as ofd, open("stream_testing.txt", "w") as ofd2:
+        i = 0
         for line in ifd:
+            i+=1
             l = line.strip().split()
             timestamp = l[0] + " " + l[1]
             if timestamp.find('.') < 0:
                 timestamp += '.0000'
+
+            print(timestamp)
             if datetime.strptime(timestamp,'%Y-%m-%d %H:%M:%S.%f') <= endtime:
                 ofd.write(line)
             else:
@@ -616,11 +690,14 @@ def task_baseline():
 
     # Split out the training part of the data within the 75% timespan
     with open(data_fname, "r") as ifd, open("data_training.txt", "w") as ofd:
+        i = 0
         for line in ifd:
+            i+=1
             l = line.strip().split()
             timestamp = l[0] + " " + l[1]
             if timestamp.find('.') < 0:
                 timestamp += '.0000'
+            print("%d %s" % (i, timestamp))
             if datetime.strptime(timestamp,'%Y-%m-%d %H:%M:%S.%f') <= endtime:
                 ofd.write(line)
     print("Done")
@@ -772,6 +849,6 @@ def task_testing_blacklist():
     classify()
 
 if __name__ == "__main__":
-    # task_original()
-    task_baseline()
+    task_original()
+    # task_baseline()
     # task_testing_blacklist()
