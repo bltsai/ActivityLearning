@@ -5,8 +5,8 @@ from datetime import datetime, timedelta
 import numpy as np
 from operator import add
 import lda
-from sklearn.datasets import load_svmlight_file
 
+from sklearn.datasets import load_svmlight_file
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics import mutual_info_score
@@ -45,7 +45,11 @@ def processing(i_fname, act_t, sensor_t, o_info, mutual_info, mutual_count):
         now_act_id = OTHER_ID
         act_dict = {}
 
+        i = 0
         for line in ifd:
+            i+=1
+            if i > 142322:
+                break
             l = line.strip().split()
             timestamp = l[0] + " " + l[1]
             sensor_id = sensor_t.index(l[2])
@@ -218,12 +222,14 @@ def entropy(labels):
         return 0
     return - np.sum(probs * np.log(probs)) / np.log(n_classes)
 
-def sensor_selection(ifd, sensor_number, target_number):
+def sensor_selection(ifd, sensor_number, sensor_t, target_number,):
     sensor_matrics = []
     activity_array = []
     mutual_info = []
     entropy_info = []
     target_sensor_index = []
+    selected_sensors = []
+    selected_sensor_ids = []
     for l in ifd:
         l = l.strip().split(',')
         sensor_array = np.asfarray(l[:sensor_number])
@@ -240,12 +246,17 @@ def sensor_selection(ifd, sensor_number, target_number):
 
     print(entropy_info)
 
+    print("Original sensor list %s" % (sensor_t))
     # select target number of sensor that maximize the sum of mutual_info and
     # minimize the lose of sum of entropy_info from total sensor_number
     mutual_info.sort(key=lambda tup: tup[0], reverse=True)
-    print(mutual_info)
+    for m in mutual_info:
+        selected_sensors.append(sensor_t[m[1]])
+        selected_sensor_ids.append(m[1])
 
-    return mutual_info[:target_number]
+    print("Sorted sensor list %s by importance" % (selected_sensors))
+    print("Selected Sensor Ids %s" % selected_sensor_ids[:target_number])
+    return selected_sensor_ids[:target_number]
 
 
 
@@ -276,7 +287,10 @@ def func_ldafeature(ofd, act_t, sensor_t, now_act_id, starttime, endtime, act_in
         count += 1
 
     for i, sensor in enumerate(sensor_t):
-        feature = 0 if i not in sensor_dict else sensor_dict[i]
+        if (not isWhiteList(i)):
+            feature = 0
+        else:
+            feature = 0 if i not in sensor_dict else sensor_dict[i]
         output_line.append(str(count) + ":" + str(feature))
         count += 1
 
@@ -290,8 +304,10 @@ def func_mutual(mutual_info, mutual_count, act_info):
     involved_sensor_list = sensor_dict.keys()
 
     for row in involved_sensor_list:
-        for col in involved_sensor_list:
-            mutual_info[row][col] += 1
+        if (isWhiteList(row)):
+            for col in involved_sensor_list:
+                if (isWhiteList(col)):
+                    mutual_info[row][col] += 1
 
 def mutual_output(mutual_info, mutual_count, ofd):
     count = mutual_count[0]
@@ -408,6 +424,9 @@ def getFeatureStream(ifd, ofd, window_size, act_t, sensor_t, mutual_info, mutual
         sensor_value = l[3]
         act_id = indexOfPrefix(act_t, l[4])
         item = [timestamp, sensor_id, act_id]
+
+        if (not isWhiteList(sensor_id) or act_id == OTHER_ID):
+            continue
         if len(sliding_window) < window_size:
             sliding_window.append(item)
 
@@ -461,7 +480,7 @@ def getFeatureStream(ifd, ofd, window_size, act_t, sensor_t, mutual_info, mutual
             row = sensor_last_id
             for col, sensor in enumerate(sensor_t):
                 value = 0
-                if col in involved_sensor_list:
+                if col in involved_sensor_list and isWhiteList(col):
                     value = mutual_info[row][col]
                 tmp_list.append(str(round(value,3)))
 
@@ -597,9 +616,12 @@ def task_original():
 
     print("Done")
 
+    selected_sensors = []
     print("Sensor Selection on the pcainput")
     with open(pca_input_fname, "r") as ifd:
-        sensor_selection(ifd, len(sensor_t), 30)
+        selected_sensors = sensor_selection(ifd, len(sensor_t), sensor_t, 30)
+    print("Sensor Selection is done")
+    print(selected_sensors)
 
     print("Calculate window size...", end="", flush=True)
     window_size, window_num = getWindowSize(window_fname, act_t, sensor_t)
@@ -621,7 +643,7 @@ def task_original():
         line_count = i + 1
 
     # Splite feature stream to 75 training and 25 testing
-    line_count = int(round(line_count * 0.75))
+    line_count = int(round(line_count * 0.10))
     with open(featurestream_fname, "r") as ifd, open("trainstream.txt", "w") as ofd, open("teststream.txt", "w") as ofd2:
         for i, l in enumerate(ifd):
             if i < line_count:
@@ -736,7 +758,16 @@ def task_baseline():
 
     classify()
 
+whitelist_30 = {17, 26, 22, 28, 27, 21, 15, 23, 29, 3, 38, 25, 11, 6, 13, 8, 5, 30, 34, 16, 12, 7, 4, 14, 24, 35, 36, 10, 18, 20}
+whitelist_20 = {17, 26, 22, 28, 27, 21, 15, 23, 29, 3, 38, 25, 11, 6, 13, 8, 5, 30, 34, 16}
+whitelist_10 = {17, 26, 22, 28, 27, 21, 15, 23, 29, 3}
+whitelist_5 = {17, 26, 22, 28, 27}
+def isWhiteList(sensor_id):
+    return sensor_id in whitelist_30
+
 def isBlacklist(act_t, sensor_t, l):
+
+
     timestamp = l[0] + " " + l[1]
     if timestamp.find('.') < 0:
         timestamp += '.0000'
