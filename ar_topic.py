@@ -556,7 +556,7 @@ def classify():
         f.append(y)
     print("f_score array")
     print(f)
-    print("\nf_score %f\n" % sum(f)/len(f))
+    print("\nf_score %f\n" % (sum(f)/len(f)))
 
     importances = clf.feature_importances_
 
@@ -643,7 +643,7 @@ def task_original():
         line_count = i + 1
 
     # Splite feature stream to 75 training and 25 testing
-    line_count = int(round(line_count * 0.10))
+    line_count = int(round(line_count * RATIO))
     with open(featurestream_fname, "r") as ifd, open("trainstream.txt", "w") as ofd, open("teststream.txt", "w") as ofd2:
         for i, l in enumerate(ifd):
             if i < line_count:
@@ -762,8 +762,13 @@ whitelist_30 = {17, 26, 22, 28, 27, 21, 15, 23, 29, 3, 38, 25, 11, 6, 13, 8, 5, 
 whitelist_20 = {17, 26, 22, 28, 27, 21, 15, 23, 29, 3, 38, 25, 11, 6, 13, 8, 5, 30, 34, 16}
 whitelist_10 = {17, 26, 22, 28, 27, 21, 15, 23, 29, 3}
 whitelist_5 = {17, 26, 22, 28, 27}
+
+import sys
+RATIO = int(sys.argv[1])/100.0
+WHITELIST = {30: whitelist_30, 20: whitelist_20, 10: whitelist_10, 5: whitelist_5}
+
 def isWhiteList(sensor_id):
-    return sensor_id in whitelist_30
+    return sensor_id in WHITELIST[int(sys.argv[2])]
 
 def isBlacklist(act_t, sensor_t, l):
 

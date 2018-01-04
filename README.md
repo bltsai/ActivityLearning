@@ -9,7 +9,7 @@ pip3 install scikit-learn numpy lda
 
 
 ```bash
-python3 ar_topic.py
+sh ar_topic.sh
 ```
 
 In the bottom of the code, choose to run either of the task function.
