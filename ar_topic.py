@@ -21,6 +21,15 @@ SENSORS = "sensors"
 
 TRAIN_ITERATION = 1500 # default 1500
 
+import sys
+RATIO = int(sys.argv[1])/100.0
+# For HH104
+WHITELIST = [125, 95, 119, 121, 115, 120, 102, 111, 99, 87, 110, 123, 76, 63, 107, 84, 66, 85, 91, 101, 88, 103, 93, 79, 94, 75, 81, 90, 89, 106]
+
+# For CAIRO
+#WHITELIST = [23, 4, 20, 21, 11, 13, 10, 22, 30, 5, 1, 12, 31, 6, 8, 2, 29, 0, 7, 19, 27, 16, 9, 28, 15, 14, 24, 17, 18, 26]
+SELECTED_NUMBER = int(sys.argv[2])
+WHITELIST = set(WHITELIST[:SELECTED_NUMBER])
 
 def getListFromLines(fname):
     ret = []
@@ -31,9 +40,14 @@ def getListFromLines(fname):
     return ret
 
 def indexOfPrefix(l, s):
+    max_candidate = ""
+    max_candidate_i = -1
     for index, value in enumerate(l):
-        if value in s:
-            return index
+        if value in s and len(value) > len(max_candidate):
+            max_candidate = value
+            max_candidate_i = index
+
+    return max_candidate_i
 
 def processing(i_fname, act_t, sensor_t, o_info, mutual_info, mutual_count):
     with open(i_fname, "r") as ifd:
@@ -77,8 +91,6 @@ def processing(i_fname, act_t, sensor_t, o_info, mutual_info, mutual_count):
 
             # output activity window, lda feature, mutual information if Other activiy or a known activity ends
             if handle_end:
-                act_info = act_dict[now_act_id][SENSORS]
-                act_info[sensor_id] = act_info.get(sensor_id, 0) + 1
 
                 handle_end = False
                 if now_act_id not in act_dict:
@@ -87,6 +99,8 @@ def processing(i_fname, act_t, sensor_t, o_info, mutual_info, mutual_count):
                 else:
                     act_info = act_dict[now_act_id]
                     sensor_dict = act_info[SENSORS]
+                    sensor_dict[sensor_id] = sensor_dict.get(sensor_id, 0) + 1
+
                     involved_sensor_count = len(sensor_dict)
                     event_count = sum(sensor_dict.values())
 
@@ -758,17 +772,14 @@ def task_baseline():
 
     classify()
 
-whitelist_30 = {17, 26, 22, 28, 27, 21, 15, 23, 29, 3, 38, 25, 11, 6, 13, 8, 5, 30, 34, 16, 12, 7, 4, 14, 24, 35, 36, 10, 18, 20}
-whitelist_20 = {17, 26, 22, 28, 27, 21, 15, 23, 29, 3, 38, 25, 11, 6, 13, 8, 5, 30, 34, 16}
-whitelist_10 = {17, 26, 22, 28, 27, 21, 15, 23, 29, 3}
-whitelist_5 = {17, 26, 22, 28, 27}
+# whitelist_30 = {17, 26, 22, 28, 27, 21, 15, 23, 29, 3, 38, 25, 11, 6, 13, 8, 5, 30, 34, 16, 12, 7, 4, 14, 24, 35, 36, 10, 18, 20}
+# whitelist_20 = {17, 26, 22, 28, 27, 21, 15, 23, 29, 3, 38, 25, 11, 6, 13, 8, 5, 30, 34, 16}
+# whitelist_10 = {17, 26, 22, 28, 27, 21, 15, 23, 29, 3}
+# whitelist_5 = {17, 26, 22, 28, 27}
 
-import sys
-RATIO = int(sys.argv[1])/100.0
-WHITELIST = {30: whitelist_30, 20: whitelist_20, 10: whitelist_10, 5: whitelist_5}
 
 def isWhiteList(sensor_id):
-    return sensor_id in WHITELIST[int(sys.argv[2])]
+    return sensor_id in WHITELIST
 
 def isBlacklist(act_t, sensor_t, l):
 
