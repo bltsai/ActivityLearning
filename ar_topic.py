@@ -724,27 +724,38 @@ def task_analysis():
     sensor_t = getListFromLines(sensor_t_fname)
     print("Done")
 
+    # selected_sensors = []
+    # print("Sensor Selection on the pcainput...", end="", flush=True)
+    # with open(pca_input_fname, "w") as ofd5:
+    #     o_info = {}
+    #     o_info["pcainput"] = {"ofd":ofd5, "func":func_pca_input}
+    #     processing(data_fname, act_t, sensor_t, o_info, None, None)
+
+    # with open(pca_input_fname, "r") as ifd:
+    #     selected_sensors = sensor_selection(ifd, len(sensor_t), sensor_t, 30)
+
+    # # selected_sensors = range(len(sensor_t))
+
+    # global WHITELIST
+    # WHITELIST = set(selected_sensors)
+    # print("Done")
+    # print("Selected:")
+    # print(selected_sensors)
+    # print("Whitelist:")
+    # print(WHITELIST)
+
     # print("Process streaming label, activity window, LDA feature, and mutual info...", end="", flush=True)
-    # with open(streaming_fname, "w") as ofd1, open(window_fname, "w") as ofd2, open(lda_fname, "w") as ofd3, open(mutual_fname, "w") as ofd4, open(pca_input_fname, "w") as ofd5:
+    # with open(streaming_fname, "w") as ofd1, open(window_fname, "w") as ofd2, open(lda_fname, "w") as ofd3, open(mutual_fname, "w") as ofd4:
     #     o_info = {}
     #     o_info["streaming"] = {"ofd":ofd1}
     #     o_info["window"] = {"ofd":ofd2, "func":func_window}
     #     o_info["lda"] = {"ofd":ofd3, "func":func_ldafeature}
     #     o_info["mutual"] = {"func": func_mutual}
-    #     o_info["pcainput"] = {"ofd":ofd5, "func":func_pca_input}
     #     mutual_info = np.zeros((len(sensor_t), len(sensor_t)))
     #     mutual_count = [0]
     #     processing(data_fname, act_t, sensor_t, o_info, mutual_info, mutual_count)
     #     mutual_output(mutual_info, mutual_count, ofd4)
-
     # print("Done")
-
-    # selected_sensors = []
-    # print("Sensor Selection on the pcainput")
-    # with open(pca_input_fname, "r") as ifd:
-    #     selected_sensors = sensor_selection(ifd, len(sensor_t), sensor_t, 30)
-    # print("Sensor Selection is done")
-    # print(selected_sensors)
 
     # print("Calculate window size...", end="", flush=True)
     # window_size, window_num = getWindowSize(window_fname, act_t, sensor_t)
@@ -1011,7 +1022,7 @@ def task_testing_blacklist():
     classify()
 
 if __name__ == "__main__":
-    task_original()
+    # task_original()
     task_analysis()
     # task_baseline()
     # task_testing_blacklist()
