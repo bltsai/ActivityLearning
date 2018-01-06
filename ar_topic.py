@@ -3,6 +3,7 @@ import datetime, time
 from time import mktime
 from datetime import datetime, timedelta
 import numpy as np
+np.set_printoptions(threshold=np.inf)
 from operator import add
 import lda
 
@@ -24,12 +25,12 @@ TRAIN_ITERATION = 1500 # default 1500
 import sys
 RATIO = int(sys.argv[1])/100.0
 # For HH104
-WHITELIST = [125, 95, 119, 121, 115, 120, 102, 111, 99, 87, 110, 123, 76, 63, 107, 84, 66, 85, 91, 101, 88, 103, 93, 79, 94, 75, 81, 90, 89, 106]
+# WHITELIST = [125, 95, 119, 121, 115, 120, 102, 111, 99, 87, 110, 123, 76, 63, 107, 84, 66, 85, 91, 101, 88, 103, 93, 79, 94, 75, 81, 90, 89, 106]
 
 # For CAIRO
-#WHITELIST = [23, 4, 20, 21, 11, 13, 10, 22, 30, 5, 1, 12, 31, 6, 8, 2, 29, 0, 7, 19, 27, 16, 9, 28, 15, 14, 24, 17, 18, 26]
+# WHITELIST = [23, 4, 20, 21, 11, 13, 10, 22, 30, 5, 1, 12, 31, 6, 8, 2, 29, 0, 7, 19, 27, 16, 9, 28, 15, 14, 24, 17, 18, 26]
 SELECTED_NUMBER = int(sys.argv[2])
-WHITELIST = set(WHITELIST[:SELECTED_NUMBER])
+WHITELIST = None
 
 def getListFromLines(fname):
     ret = []
@@ -518,7 +519,7 @@ def getFeatureStream(ifd, ofd, window_size, act_t, sensor_t, mutual_info, mutual
                 ofd.flush()
 
 
-def classify():
+def classify(n_classes=None):
     X_train, y_train = load_svmlight_file("trainstream.txt")
     X_test, y_test = load_svmlight_file("teststream.txt", n_features=X_train.shape[1])
     t0 = time.time()
@@ -533,13 +534,40 @@ def classify():
     print ("testing time running : %s seconds" % str(t1-t0))
     print("\naccuracy: %.4f %%\n"% accuracy)
 
-    print("confusion_matrix:")
 
-    print(confusion_matrix(y_test, y_pred))
+    if n_classes is not None:
+        conmatrix_all=confusion_matrix(y_test, y_pred, labels=np.arange(n_classes))
+        tsp_conmatrix=np.transpose(conmatrix_all)
+        p=[]
+        for i,row in enumerate(tsp_conmatrix):
+
+            if sum(row)>0:
+                x=row[i]/sum(row)
+            else:
+                x=-1
+            p.append(x)
+        print("Precision for all classes")
+        print(p)
+
+        r=[]
+        for i,row in enumerate(conmatrix_all):
+
+            if sum(row)>0:
+                x=row[i]/sum(row)
+            else:
+                x=-1
+            r.append(x)
+
+        print("Recall for all classes")
+        print(r)
+
 
     conmatrix=confusion_matrix(y_test, y_pred)
+    tsp_conmatrix=np.transpose(conmatrix)
+    print("Confusion Matrix:")
+    print(conmatrix)
     p=[]
-    for i,row in enumerate(conmatrix):
+    for i,row in enumerate(tsp_conmatrix):
 
         if sum(row)>0:
             x=row[i]/sum(row)
@@ -547,11 +575,11 @@ def classify():
             x=1
         p.append(x)
 
+    print("Precision for appeared classes")
     print(p)
 
-    tsp_conmatrix=np.transpose(conmatrix)
     r=[]
-    for i,row in enumerate(tsp_conmatrix):
+    for i,row in enumerate(conmatrix):
 
         if sum(row)>0:
             x=row[i]/sum(row)
@@ -559,6 +587,7 @@ def classify():
             x=1
         r.append(x)
 
+    print("Recall for appeared classes")
     print(r)
 
     f=[]
@@ -568,9 +597,9 @@ def classify():
         else:
             y=0
         f.append(y)
-    print("f_score array")
+    print("f1_score array")
     print(f)
-    print("\nf_score %f\n" % (sum(f)/len(f)))
+    print("\nf1_score %f\n" % (sum(f)/len(f)))
 
     importances = clf.feature_importances_
 
@@ -615,27 +644,36 @@ def task_original():
     sensor_t = getListFromLines(sensor_t_fname)
     print("Done")
 
+    selected_sensors = []
+    print("Sensor Selection on the pcainput...", end="", flush=True)
+    with open(pca_input_fname, "w") as ofd5:
+        o_info = {}
+        o_info["pcainput"] = {"ofd":ofd5, "func":func_pca_input}
+        processing(data_fname, act_t, sensor_t, o_info, None, None)
+
+    with open(pca_input_fname, "r") as ifd:
+        selected_sensors = sensor_selection(ifd, len(sensor_t), sensor_t, 30)
+
+    global WHITELIST
+    WHITELIST = set(selected_sensors[:SELECTED_NUMBER])
+    print("Done")
+    print("Selected:")
+    print(selected_sensors)
+    print("Whitelist:")
+    print(WHITELIST)
+
     print("Process streaming label, activity window, LDA feature, and mutual info...", end="", flush=True)
-    with open(streaming_fname, "w") as ofd1, open(window_fname, "w") as ofd2, open(lda_fname, "w") as ofd3, open(mutual_fname, "w") as ofd4, open(pca_input_fname, "w") as ofd5:
+    with open(streaming_fname, "w") as ofd1, open(window_fname, "w") as ofd2, open(lda_fname, "w") as ofd3, open(mutual_fname, "w") as ofd4:
         o_info = {}
         o_info["streaming"] = {"ofd":ofd1}
         o_info["window"] = {"ofd":ofd2, "func":func_window}
         o_info["lda"] = {"ofd":ofd3, "func":func_ldafeature}
         o_info["mutual"] = {"func": func_mutual}
-        o_info["pcainput"] = {"ofd":ofd5, "func":func_pca_input}
         mutual_info = np.zeros((len(sensor_t), len(sensor_t)))
         mutual_count = [0]
         processing(data_fname, act_t, sensor_t, o_info, mutual_info, mutual_count)
         mutual_output(mutual_info, mutual_count, ofd4)
-
     print("Done")
-
-    selected_sensors = []
-    print("Sensor Selection on the pcainput")
-    with open(pca_input_fname, "r") as ifd:
-        selected_sensors = sensor_selection(ifd, len(sensor_t), sensor_t, 30)
-    print("Sensor Selection is done")
-    print(selected_sensors)
 
     print("Calculate window size...", end="", flush=True)
     window_size, window_num = getWindowSize(window_fname, act_t, sensor_t)
@@ -665,7 +703,84 @@ def task_original():
             else:
                 ofd2.write(l)
 
-    classify()
+    classify(len(act_t))
+
+def task_analysis():
+    act_t_fname = "activities.txt"
+    sensor_t_fname = "sensors.txt"
+    data_fname = "data.txt"
+    streaming_fname = "streaming.txt"
+    window_fname = "window.txt"
+    lda_fname = "lda.txt"
+    mutual_fname = "mumtrix.txt"
+    featurestream_fname = "featurestream.txt"
+    pca_input_fname = "pcainput.txt"
+
+    print("Read activity types...", end="", flush=True)
+    act_t = getListFromLines(act_t_fname)
+    print("Done")
+
+    print("Read sensor types...", end="", flush=True)
+    sensor_t = getListFromLines(sensor_t_fname)
+    print("Done")
+
+    # print("Process streaming label, activity window, LDA feature, and mutual info...", end="", flush=True)
+    # with open(streaming_fname, "w") as ofd1, open(window_fname, "w") as ofd2, open(lda_fname, "w") as ofd3, open(mutual_fname, "w") as ofd4, open(pca_input_fname, "w") as ofd5:
+    #     o_info = {}
+    #     o_info["streaming"] = {"ofd":ofd1}
+    #     o_info["window"] = {"ofd":ofd2, "func":func_window}
+    #     o_info["lda"] = {"ofd":ofd3, "func":func_ldafeature}
+    #     o_info["mutual"] = {"func": func_mutual}
+    #     o_info["pcainput"] = {"ofd":ofd5, "func":func_pca_input}
+    #     mutual_info = np.zeros((len(sensor_t), len(sensor_t)))
+    #     mutual_count = [0]
+    #     processing(data_fname, act_t, sensor_t, o_info, mutual_info, mutual_count)
+    #     mutual_output(mutual_info, mutual_count, ofd4)
+
+    # print("Done")
+
+    # selected_sensors = []
+    # print("Sensor Selection on the pcainput")
+    # with open(pca_input_fname, "r") as ifd:
+    #     selected_sensors = sensor_selection(ifd, len(sensor_t), sensor_t, 30)
+    # print("Sensor Selection is done")
+    # print(selected_sensors)
+
+    # print("Calculate window size...", end="", flush=True)
+    # window_size, window_num = getWindowSize(window_fname, act_t, sensor_t)
+    # print("Done")
+    # print("window size is %d" % window_size)
+
+    # print("Train Topic Model...", flush=True)
+    # topic_word, act_array = trainTopicModel(lda_fname, window_num, act_t, sensor_t)
+    # print("Train Topic Model...Done", flush=True)
+
+    # print("Process sliding window...", end="", flush=True)
+    # with open(featurestream_fname, "w") as ofd, open(streaming_fname, "r") as ifd:
+    #     getFeatureStream(ifd, ofd, window_size, act_t, sensor_t, mutual_info, mutual_count, topic_word, act_array)
+    # print("Done")
+
+    # Get total line count
+    with open(featurestream_fname, "r") as ifd:
+        for i, _ in enumerate(ifd): pass
+        line_count = i + 1
+
+    # Splite feature stream to 75 training and 25 testing
+    line_count = int(round(line_count * RATIO))
+    train_act_dist = {}
+    all_act_dist = {}
+    with open(featurestream_fname, "r") as ifd:
+        for i, l in enumerate(ifd):
+            l = l.strip().split()
+            act_id = int(l[0])
+            if i < line_count:
+                train_act_dist[act_id] = train_act_dist.get(act_id, 0) + 1
+            all_act_dist[act_id] = all_act_dist.get(act_id, 0) + 1
+
+    for i in range(len(act_t)):
+        count = train_act_dist.get(i, 0)
+        total = all_act_dist.get(i, 0)
+        print(i, act_t[i], count, total)
 
 
 def task_baseline():
@@ -897,5 +1012,6 @@ def task_testing_blacklist():
 
 if __name__ == "__main__":
     task_original()
+    task_analysis()
     # task_baseline()
     # task_testing_blacklist()
