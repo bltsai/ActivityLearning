@@ -60,11 +60,11 @@ def processing(i_fname, act_t, sensor_t, o_info, mutual_info, mutual_count):
         now_act_id = OTHER_ID
         act_dict = {}
 
-        i = 0
+        # i = 0
         for line in ifd:
-            i+=1
-            if i > 142322:
-                break
+            # i+=1
+            # if i > 142322:
+            #     break
             l = line.strip().split()
             timestamp = l[0] + " " + l[1]
             sensor_id = sensor_t.index(l[2])
@@ -794,7 +794,7 @@ def task_analysis():
         print(i, act_t[i], count, total)
 
 
-def task_baseline():
+def task_edge_cloud():
     act_t_fname = "activities.txt"
     sensor_t_fname = "sensors.txt"
     data_fname = "data.txt"
@@ -803,6 +803,10 @@ def task_baseline():
     lda_fname = "lda.txt"
     mutual_fname = "mumtrix.txt"
     featurestream_fname = "featurestream.txt"
+    pca_input_fname = "pcainput.txt"
+
+    global WHITELIST
+    WHITELIST = None
 
     print("Read activity types...", end="", flush=True)
     act_t = getListFromLines(act_t_fname)
@@ -831,37 +835,43 @@ def task_baseline():
                 mintime = datetime.strptime(timestamp,'%Y-%m-%d %H:%M:%S.%f')
         maxtime = datetime.strptime(timestamp,'%Y-%m-%d %H:%M:%S.%f')
 
-        datediff = int(round((maxtime.date() - mintime.date()).days * 0.75))-1
+        datediff = int(round((maxtime.date() - mintime.date()).days * RATIO))-1
         endtime = datetime.combine(mintime.date() + timedelta(days=datediff), datetime.max.time())
 
-    # Split the streaming based on the timestamp above
+    # Split the streaming based on the timestamp above and record the ending timestamp of the last line
+    end_training_time = None
     with open(streaming_fname, "r") as ifd, open("stream_training.txt", "w") as ofd, open("stream_testing.txt", "w") as ofd2:
-        i = 0
         for line in ifd:
-            i+=1
             l = line.strip().split()
             timestamp = l[0] + " " + l[1]
             if timestamp.find('.') < 0:
                 timestamp += '.0000'
-
-            print(timestamp)
-            if datetime.strptime(timestamp,'%Y-%m-%d %H:%M:%S.%f') <= endtime:
+            nowtime = datetime.strptime(timestamp,'%Y-%m-%d %H:%M:%S.%f')
+            if nowtime <= endtime:
                 ofd.write(line)
+                end_training_time = nowtime
             else:
                 ofd2.write(line)
 
     # Split out the training part of the data within the 75% timespan
-    with open(data_fname, "r") as ifd, open("data_training.txt", "w") as ofd:
-        i = 0
+    data_training_fname = "data_training.txt"
+    with open(data_fname, "r") as ifd, open("stream_training.txt", "r") as ifd2, open(data_training_fname, "w") as ofd:
         for line in ifd:
-            i+=1
             l = line.strip().split()
             timestamp = l[0] + " " + l[1]
+
+            l2 = ifd2.readline().strip().split()
+
             if timestamp.find('.') < 0:
                 timestamp += '.0000'
-            print("%d %s" % (i, timestamp))
-            if datetime.strptime(timestamp,'%Y-%m-%d %H:%M:%S.%f') <= endtime:
+            nowtime = datetime.strptime(timestamp,'%Y-%m-%d %H:%M:%S.%f')
+            if nowtime <= endtime:
+                # if the last activity is not None, end it
+                if nowtime == end_training_time and l2[4] != "Other":
+                    line = line.strip() + ("\t%s_end\n" % act_id)
                 ofd.write(line)
+            else:
+                break
     print("Done")
 
     print("Process activity window, LDA feature, and mutual info...", end="", flush=True)
@@ -872,7 +882,7 @@ def task_baseline():
         o_info["mutual"] = {"func": func_mutual}
         mutual_info = np.zeros((len(sensor_t), len(sensor_t)))
         mutual_count = [0]
-        processing("data_training.txt", act_t, sensor_t, o_info, mutual_info, mutual_count)
+        processing(data_training_fname, act_t, sensor_t, o_info, mutual_info, mutual_count)
         mutual_output(mutual_info, mutual_count, ofd4)
     print("Done")
 
@@ -885,144 +895,44 @@ def task_baseline():
     topic_word, act_array = trainTopicModel(lda_fname, window_num, act_t, sensor_t)
     print("Train Topic Model...Done", flush=True)
 
-
     print("Process training sliding window...", end="", flush=True)
     with open("trainstream.txt", "w") as ofd, open("stream_training.txt", "r") as ifd:
         getFeatureStream(ifd, ofd, window_size, act_t, sensor_t, mutual_info, mutual_count, topic_word, act_array)
     print("Done")
+
+    # select sensors based on the training data
+    selected_sensors = []
+    print("Sensor Selection on the pcainput...", end="", flush=True)
+    with open(pca_input_fname, "w") as ofd5:
+        o_info = {}
+        o_info["pcainput"] = {"ofd":ofd5, "func":func_pca_input}
+        processing(data_training_fname, act_t, sensor_t, o_info, None, None)
+
+    with open(pca_input_fname, "r") as ifd:
+        selected_sensors = sensor_selection(ifd, len(sensor_t), sensor_t, 30)
+
+    WHITELIST = set(selected_sensors[:SELECTED_NUMBER])
+    print("Done")
+    print("Selected:")
+    print(selected_sensors)
+    print("Whitelist:")
+    print(WHITELIST)
 
     print("Process testing sliding window...", end="", flush=True)
     with open("teststream.txt", "w") as ofd, open("stream_testing.txt", "r") as ifd:
         getFeatureStream(ifd, ofd, window_size, act_t, sensor_t, mutual_info, mutual_count, topic_word, act_array)
     print("Done")
 
-    classify()
-
-# whitelist_30 = {17, 26, 22, 28, 27, 21, 15, 23, 29, 3, 38, 25, 11, 6, 13, 8, 5, 30, 34, 16, 12, 7, 4, 14, 24, 35, 36, 10, 18, 20}
-# whitelist_20 = {17, 26, 22, 28, 27, 21, 15, 23, 29, 3, 38, 25, 11, 6, 13, 8, 5, 30, 34, 16}
-# whitelist_10 = {17, 26, 22, 28, 27, 21, 15, 23, 29, 3}
-# whitelist_5 = {17, 26, 22, 28, 27}
-
+    print("classify")
+    classify(len(act_t))
 
 def isWhiteList(sensor_id):
-    return sensor_id in WHITELIST
+    if WHITELIST is not None:
+        return sensor_id in WHITELIST
+    return True
 
-def isBlacklist(act_t, sensor_t, l):
-
-
-    timestamp = l[0] + " " + l[1]
-    if timestamp.find('.') < 0:
-        timestamp += '.0000'
-    sensor_id = sensor_t.index(l[2])
-    sensor_value = l[3]
-    act_id = indexOfPrefix(act_t, l[4])
-
-    ### TODO: filter the sensor event ###
-
-    return False
-
-
-
-def task_testing_blacklist():
-    act_t_fname = "activities.txt"
-    sensor_t_fname = "sensors.txt"
-    data_fname = "data.txt"
-    streaming_fname = "streaming.txt"
-    window_fname = "window.txt"
-    lda_fname = "lda.txt"
-    mutual_fname = "mumtrix.txt"
-    featurestream_fname = "featurestream.txt"
-
-    print("Read activity types...", end="", flush=True)
-    act_t = getListFromLines(act_t_fname)
-    print("Done")
-
-    print("Read sensor types...", end="", flush=True)
-    sensor_t = getListFromLines(sensor_t_fname)
-    print("Done")
-
-    print("Prepare training data...", end="", flush=True)
-    with open(streaming_fname, "w") as ofd1:
-        o_info = {}
-        o_info["streaming"] = {"ofd":ofd1}
-        mutual_info = None
-        mutual_count = None
-        processing(data_fname, act_t, sensor_t, o_info, mutual_info, mutual_count)
-
-    # Get the timestamp of the last second of the date when is 75% of overall timespan among the data
-    with open(data_fname, "r") as ifd:
-        mintime = None
-        maxtime = None
-        for l in ifd:
-            l = l.strip().split()
-            timestamp = l[0] + " " + l[1]
-            if mintime is None:
-                mintime = datetime.strptime(timestamp,'%Y-%m-%d %H:%M:%S.%f')
-        maxtime = datetime.strptime(timestamp,'%Y-%m-%d %H:%M:%S.%f')
-
-        datediff = int(round((maxtime.date() - mintime.date()).days * 0.75))-1
-        endtime = datetime.combine(mintime.date() + timedelta(days=datediff), datetime.max.time())
-
-    # Split the streaming based on the timestamp above
-    # For testing data, block the sensor event based on blacklist
-    with open(streaming_fname, "r") as ifd, open("stream_training.txt", "w") as ofd, open("stream_testing.txt", "w") as ofd2:
-        for line in ifd:
-            l = line.strip().split()
-            timestamp = l[0] + " " + l[1]
-            if timestamp.find('.') < 0:
-                timestamp += '.0000'
-            if datetime.strptime(timestamp,'%Y-%m-%d %H:%M:%S.%f') <= endtime:
-                ofd.write(line)
-            elif not isBlacklist(act_t, sensor_t, l):
-                ofd2.write(line)
-
-    # Split out the training part of the data within the 75% timespan
-    with open(data_fname, "r") as ifd, open("data_training.txt", "w") as ofd:
-        for line in ifd:
-            l = line.strip().split()
-            timestamp = l[0] + " " + l[1]
-            if timestamp.find('.') < 0:
-                timestamp += '.0000'
-            if datetime.strptime(timestamp,'%Y-%m-%d %H:%M:%S.%f') <= endtime:
-                ofd.write(line)
-    print("Done")
-
-    print("Process activity window, LDA feature, and mutual info...", end="", flush=True)
-    with open(window_fname, "w") as ofd2, open(lda_fname, "w") as ofd3, open(mutual_fname, "w") as ofd4:
-        o_info = {}
-        o_info["window"] = {"ofd":ofd2, "func":func_window}
-        o_info["lda"] = {"ofd":ofd3, "func":func_ldafeature}
-        o_info["mutual"] = {"func": func_mutual}
-        mutual_info = np.zeros((len(sensor_t), len(sensor_t)))
-        mutual_count = [0]
-        processing("data_training.txt", act_t, sensor_t, o_info, mutual_info, mutual_count)
-        mutual_output(mutual_info, mutual_count, ofd4)
-    print("Done")
-
-    print("Calculate window size...", end="", flush=True)
-    window_size, window_num = getWindowSize(window_fname, act_t, sensor_t)
-    print("Done")
-    print("window size is %d" % window_size)
-
-    print("Train Topic Model...", flush=True)
-    topic_word, act_array = trainTopicModel(lda_fname, window_num, act_t, sensor_t)
-    print("Train Topic Model...Done", flush=True)
-
-
-    print("Process training sliding window...", end="", flush=True)
-    with open("trainstream.txt", "w") as ofd, open("stream_training.txt", "r") as ifd:
-        getFeatureStream(ifd, ofd, window_size, act_t, sensor_t, mutual_info, mutual_count, topic_word, act_array)
-    print("Done")
-
-    print("Process testing sliding window...", end="", flush=True)
-    with open("teststream.txt", "w") as ofd, open("stream_testing.txt", "r") as ifd:
-        getFeatureStream(ifd, ofd, window_size, act_t, sensor_t, mutual_info, mutual_count, topic_word, act_array)
-    print("Done")
-
-    classify()
 
 if __name__ == "__main__":
     # task_original()
-    task_analysis()
-    # task_baseline()
-    # task_testing_blacklist()
+    # task_analysis()
+    task_edge_cloud()
